@@ -6,6 +6,9 @@ import (
     "math/rand"
     "strings"
     "time"
+    "gonum.org/v1/plot"
+    "gonum.org/v1/plot/plotter"
+    "gonum.org/v1/plot/vg"
 )
 
 // polyRing represents a polynomial ring over rational numbers
@@ -118,7 +121,6 @@ func (p *polyRing) mul(q *polyRing) *polyRing {
     return newPolyRing(result)
 }
 
-// div divides two polynomials and returns the quotient and remainder
 func (p *polyRing) div(q *polyRing) (*polyRing, *polyRing) {
     if q.isZero() {
         panic("division by zero")
@@ -126,14 +128,16 @@ func (p *polyRing) div(q *polyRing) (*polyRing, *polyRing) {
 
     pDeg, qDeg := p.deg(), q.deg()
     if pDeg < qDeg {
+        // If the degree of p is less than the degree of q, return quotient as 0 and p as the remainder
         return newPolyRing([]*big.Rat{new(big.Rat)}), newPolyRing(p.coeff)
     }
 
     quotient := make([]*big.Rat, pDeg-qDeg+1)
+    remainder := make([]*big.Rat, pDeg+1) // Ensure this matches the degree of p
+
     for i := range quotient {
         quotient[i] = new(big.Rat)
     }
-    remainder := make([]*big.Rat, len(p.coeff))
     for i := range remainder {
         remainder[i] = new(big.Rat).Set(p.coeff[i])
     }
@@ -143,7 +147,10 @@ func (p *polyRing) div(q *polyRing) (*polyRing, *polyRing) {
         quotient[pDeg-qDeg] = leadCoeff
 
         for i := range q.coeff {
-            remainder[pDeg-qDeg+i].Sub(remainder[pDeg-qDeg+i], new(big.Rat).Mul(leadCoeff, q.coeff[i]))
+            temp := new(big.Rat).Mul(leadCoeff, q.coeff[i])
+            if pDeg-qDeg+i < len(remainder) {
+                remainder[pDeg-qDeg+i].Sub(remainder[pDeg-qDeg+i], temp)
+            }
         }
 
         for pDeg >= 0 && remainder[pDeg].Sign() == 0 {
@@ -151,8 +158,13 @@ func (p *polyRing) div(q *polyRing) (*polyRing, *polyRing) {
         }
     }
 
+    // Ensure the remainder slice is correctly sliced to match the actual degree
     return newPolyRing(quotient), newPolyRing(remainder[:pDeg+1])
 }
+
+
+
+
 
 // extendedEuclideanPoly implements the extended Euclidean algorithm for polynomials
 func extendedEuclideanPoly(f, g *polyRing) (*polyRing, *polyRing, *polyRing) {
@@ -223,6 +235,44 @@ func testExtendedEuclidean(numTests int) {
     }
 }
 
+func testExtendedEuclideanLength(maxLength int) {
+    points := make(plotter.XYs, maxLength)
+    var totalTime time.Duration
+
+    for i := 1; i <= maxLength; i++ {
+        f := generateRandomPolynomial(i)
+        g := generateRandomPolynomial(i)
+
+        startTime := time.Now()
+        extendedEuclideanPoly(f, g)
+        endTime := time.Now()
+        totalTime += endTime.Sub(startTime)
+
+        points[i-1].X = float64(i)
+        points[i-1].Y = totalTime.Seconds()
+    }
+
+    fmt.Printf("%s %.6f seconds\n", colorize("Total execution time:", "\033[1;35m"), totalTime.Seconds())
+
+    p := plot.New()
+    p.Title.Text = "Polynomial Length vs. Execution Time"
+    p.X.Label.Text = "Polynomial Length"
+    p.Y.Label.Text = "Execution Time (seconds)"
+
+    line, err := plotter.NewLine(points)
+    if err != nil {
+        panic(err)
+    }
+    p.Add(line)
+
+    // Save the plot to a PNG file.
+    if err := p.Save(6*vg.Inch, 4*vg.Inch, "plot.png"); err != nil {
+        panic(err)
+    }
+}
+
+
+
 func main() {
     rand.Seed(time.Now().UnixNano())
 
@@ -275,4 +325,9 @@ func main() {
     var numTests int
     fmt.Scanln(&numTests)
     testExtendedEuclidean(numTests)
+
+    fmt.Print("\nEnter the length of random polynoms to test: ")
+    var numTestsL int
+    fmt.Scanln(&numTestsL)
+    testExtendedEuclideanLength(numTestsL)
 }
